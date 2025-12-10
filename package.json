@@ -1,0 +1,14 @@
+{
+  "name": "lol-api",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": "18.x"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "cors": "^2.8.5"
+  }
+}
