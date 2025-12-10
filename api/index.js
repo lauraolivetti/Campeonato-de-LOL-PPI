@@ -1,169 +1,223 @@
-// Programado por Luiz Fernando Olivetti Albieri Zanon
+//Programado por Luiz Fernando Olivetti Albieri Zanon
 //RA 1044.25.1960-4
 
 
 const express = require("express");
-const cookieParser = require("cookie-parser");
 const session = require("express-session");
-const cors = require("cors");
-const { v4: uuidv4 } = require("uuid");
-
 const app = express();
 
-app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
-app.use(cors());
+app.use(express.json());
 
-// Sessão (30 min)
+// Sessão (30 minutos)
 app.use(
   session({
-    secret: "chave-super-secreta",
+    secret: "segredo",
     resave: false,
-    saveUninitialized: false,
-    cookie: { maxAge: 30 * 60 * 1000 }
+    saveUninitialized: true,
+    cookie: { maxAge: 30 * 60 * 1000 },
   })
 );
 
-// Armazenamento em memória
-const teams = [];
-const ROLES = ["top", "jungle", "mid", "atirador", "suporte"];
-const ELOS = ["Ferro","Bronze","Prata","Ouro","Platina","Diamante","Mestre","Grão-mestre","Desafiante"];
+// Dados em memória
+let equipes = [];
+let jogadores = [];
 
-// Helpers 
-function trim(v) { return (v || "").toString().trim(); }
-function findTeam(id) { return teams.find(t => t.id === id); }
+// Página inicial (login)
+app.get("/", (req, res) => {
+  res.send(`
+    <h1>Login</h1>
+    <form action="/login" method="POST">
+      <label>Usuário:</label>
+      <input name="usuario" required>
+      <label>Senha:</label>
+      <input type="password" name="senha" required>
+      <button type="submit">Entrar</button>
+    </form>
+  `);
+});
 
-// LOGIN 
-app.post("/api/login", (req, res) => {
+// Login
+app.post("/login", (req, res) => {
   const { usuario, senha } = req.body;
 
   if (usuario === "admin" && senha === "123") {
-    req.session.loggedIn = true;
+    req.session.logado = true;
+    req.session.ultimoAcesso = new Date().toLocaleString("pt-BR");
 
-    const agora = new Date().toLocaleString("pt-BR");
-    res.cookie("ultimoAcesso", agora, { maxAge: 30 * 60 * 1000 });
-
-    return res.json({ ok: true, message: "Login efetuado." });
+    return res.redirect("/menu");
   }
 
-  res.status(401).json({ ok: false, error: "Usuário ou senha inválidos." });
-});
-
-// LOGOUT 
-app.post("/api/logout", (req, res) => {
-  req.session.destroy(() => {
-    res.clearCookie("connect.sid");
-    res.json({ ok: true, message: "Logout realizado." });
-  });
+  res.send("<h1>Login inválido!</h1><a href='/'>Voltar</a>");
 });
 
 // Middleware para proteger rotas
 function auth(req, res, next) {
-  if (!req.session.loggedIn) {
-    return res.status(401).json({ ok: false, error: "Não autenticado." });
-  }
-  next();
+  if (req.session.logado) return next();
+  res.redirect("/");
 }
 
-// CADASTRO DE EQUIPES
-app.post("/api/teams", auth, (req, res) => {
-  const nome = trim(req.body.nome);
-  const capitao = trim(req.body.capitao);
-  const contato = trim(req.body.contato);
+// Menu do sistema
+app.get("/menu", auth, (req, res) => {
+  res.send(`
+    <h1>Menu do Sistema</h1>
+    <p>Último acesso: ${req.session.ultimoAcesso}</p>
 
-  if (!nome || !capitao || !contato) {
-    return res.status(400).json({ ok: false, error: "Todos os campos são obrigatórios." });
-  }
-
-  if (teams.some(t => t.nome.toLowerCase() === nome.toLowerCase())) {
-    return res.status(400).json({ ok: false, error: "Já existe equipe com esse nome." });
-  }
-
-  const team = {
-    id: uuidv4(),
-    nome,
-    capitao,
-    contato,
-    players: []
-  };
-
-  teams.push(team);
-
-  res.json({ ok: true, team });
+    <a href="/cadastro-equipe">Cadastrar Equipe</a><br>
+    <a href="/cadastro-jogador">Cadastrar Jogador</a><br>
+    <a href="/lista-equipes">Listar Equipes</a><br>
+    <a href="/lista-jogadores">Listar Jogadores</a><br>
+    <a href="/logout">Sair</a>
+  `);
 });
 
-// LISTAR EQUIPES
-app.get("/api/teams", auth, (req, res) => {
-  res.json({ ok: true, teams });
+// Logout
+app.get("/logout", (req, res) => {
+  req.session.destroy();
+  res.redirect("/");
 });
 
-// CADASTRO DE JOGADORES
-app.post("/api/players", auth, (req, res) => {
-  const nome = trim(req.body.nome);
-  const nickname = trim(req.body.nickname);
-  const role = trim(req.body.role);
-  const elo = trim(req.body.elo);
-  const genero = trim(req.body.genero);
-  const teamId = trim(req.body.teamId);
+// --- EQUIPES ---
+// Formulário de cadastro
+app.get("/cadastro-equipe", auth, (req, res) => {
+  res.send(`
+    <h1>Cadastrar Equipe</h1>
+    <form action="/cadastro-equipe" method="POST">
+      <label>Nome da equipe:</label>
+      <input name="nome" required>
 
-  if (!nome || !nickname || !role || !elo || !genero || !teamId) {
-    return res.status(400).json({ ok: false, error: "Todos os campos são obrigatórios." });
-  }
+      <label>Nome do capitão:</label>
+      <input name="capitao" required>
 
-  if (!ROLES.includes(role)) {
-    return res.status(400).json({ ok: false, error: "Função inválida." });
-  }
+      <label>Telefone:</label>
+      <input name="telefone" required>
 
-  if (!ELOS.includes(elo)) {
-    return res.status(400).json({ ok: false, error: "Elo inválido." });
-  }
+      <button type="submit">Cadastrar</button>
+    </form>
 
-  const team = findTeam(teamId);
-
-  if (!team) {
-    return res.status(400).json({ ok: false, error: "Equipe não encontrada." });
-  }
-
-  if (team.players.length >= 5) {
-    return res.status(400).json({ ok: false, error: "A equipe já possui 5 jogadores." });
-  }
-
-  if (team.players.some(p => p.role === role)) {
-    return res.status(400).json({ ok: false, error: "Já existe jogador nessa função na equipe." });
-  }
-
-  const player = {
-    id: uuidv4(),
-    nome,
-    nickname,
-    role,
-    elo,
-    genero
-  };
-
-  team.players.push(player);
-
-  res.json({ ok: true, player });
+    <a href="/menu">Voltar ao menu</a>
+  `);
 });
 
-// LISTAR JOGADORES POR EQUIPE 
-app.get("/api/players-by-team", auth, (req, res) => {
-  res.json({
-    ok: true,
-    teams: teams.map(t => ({
-      id: t.id,
-      nome: t.nome,
-      capitao: t.capitao,
-      contato: t.contato,
-      players: t.players
-    }))
+// Cadastro de equipe (POST)
+app.post("/cadastro-equipe", auth, (req, res) => {
+  const { nome, capitao, telefone } = req.body;
+
+  if (!nome || !capitao || !telefone) {
+    return res.send("Todos os campos são obrigatórios!");
+  }
+
+  equipes.push({ nome, capitao, telefone });
+
+  res.redirect("/lista-equipes");
+});
+
+// Listagem de equipes
+app.get("/lista-equipes", auth, (req, res) => {
+  let lista = "<h1>Equipes Cadastradas</h1>";
+
+  equipes.forEach((e, i) => {
+    lista += `<p>${i + 1}. ${e.nome} — Capitão: ${e.capitao} — Tel: ${e.telefone}</p>`;
   });
+
+  lista += `
+    <a href="/cadastro-equipe">Cadastrar outra</a><br>
+    <a href="/menu">Menu</a>
+  `;
+
+  res.send(lista);
 });
 
-// fallback
-app.all("/api/*", (req, res) => {
-  res.status(404).json({ ok: false, error: "Rota não encontrada" });
+// --- JOGADORES ---
+// Formulário jogador
+app.get("/cadastro-jogador", auth, (req, res) => {
+  if (equipes.length === 0) {
+    return res.send("<h1>Nenhuma equipe cadastrada!</h1><a href='/menu'>Voltar</a>");
+  }
+
+  let options = "";
+  equipes.forEach((eq) => {
+    options += `<option value="${eq.nome}">${eq.nome}</option>`;
+  });
+
+  res.send(`
+    <h1>Cadastrar Jogador</h1>
+    <form action="/cadastro-jogador" method="POST">
+      <label>Nome:</label>
+      <input name="nome" required>
+
+      <label>Nickname:</label>
+      <input name="nick" required>
+
+      <label>Função:</label>
+      <select name="funcao" required>
+        <option value="top">Top</option>
+        <option value="jungle">Jungle</option>
+        <option value="mid">Mid</option>
+        <option value="atirador">Atirador</option>
+        <option value="suporte">Suporte</option>
+      </select>
+
+      <label>Elo:</label>
+      <input name="elo" required>
+
+      <label>Gênero:</label>
+      <select name="genero" required>
+        <option value="feminino">Feminino</option>
+        <option value="masculino">Masculino</option>
+        <option value="outro">Outro</option>
+      </select>
+
+      <label>Equipe:</label>
+      <select name="equipe" required>
+        ${options}
+      </select>
+
+      <button type="submit">Cadastrar</button>
+    </form>
+
+    <a href="/menu">Voltar ao menu</a>
+  `);
 });
 
+// Cadastro jogador
+app.post("/cadastro-jogador", auth, (req, res) => {
+  const { nome, nick, funcao, elo, genero, equipe } = req.body;
+
+  if (!nome || !nick || !funcao || !elo || !genero || !equipe) {
+    return res.send("Todos os campos são obrigatórios!");
+  }
+
+  jogadores.push({ nome, nick, funcao, elo, genero, equipe });
+
+  res.redirect("/lista-jogadores");
+});
+
+// Listagem agrupada por equipe
+app.get("/lista-jogadores", auth, (req, res) => {
+  let html = "<h1>Jogadores Cadastrados</h1>";
+
+  equipes.forEach((eq) => {
+    html += `<h2>Equipe: ${eq.nome}</h2>`;
+
+    const daEquipe = jogadores.filter((j) => j.equipe === eq.nome);
+
+    if (daEquipe.length === 0) {
+      html += "<p>Nenhum jogador cadastrado.</p>";
+    } else {
+      daEquipe.forEach((j) => {
+        html += `<p>${j.nome} (${j.nick}) — ${j.funcao} — ${j.elo} — ${j.genero}</p>`;
+      });
+    }
+  });
+
+  html += `
+    <a href="/cadastro-jogador">Cadastrar outro</a><br>
+    <a href="/menu">Menu</a>
+  `;
+
+  res.send(html);
+});
+
+// Exporta para o Vercel
 module.exports = app;
